@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -151,6 +152,9 @@ type CLIConf struct {
 	// Verbose is used to print extra output.
 	Verbose bool
 
+	// OutputFormat is used to change the format of output
+	OutputFormat string
+
 	// NoRemoteExec will not execute a remote command after connecting to a host,
 	// will block instead. Useful when port forwarding. Equivalent of -N for OpenSSH.
 	NoRemoteExec bool
@@ -270,6 +274,7 @@ func Run(args []string) {
 	ls.Flag("cluster", clusterHelp).Envar(clusterEnvVar).StringVar(&cf.SiteName)
 	ls.Arg("labels", "List of labels to filter node list").StringVar(&cf.UserHost)
 	ls.Flag("verbose", "One-line output, including node UUIDs").Short('v').BoolVar(&cf.Verbose)
+	ls.Flag("output", "Format output (json, text)").StringVar(&cf.OutputFormat)
 	// clusters
 	clusters := app.Command("clusters", "List available Teleport clusters")
 	clusters.Flag("quiet", "Quiet mode").Short('q').BoolVar(&cf.Quiet)
@@ -724,7 +729,7 @@ func onListNodes(cf *CLIConf) {
 		return nodes[i].GetHostname() < nodes[j].GetHostname()
 	})
 
-	showNodes(nodes, cf.Verbose)
+	showNodes(nodes, cf.Verbose, cf.OutputFormat)
 }
 
 func executeAccessRequest(cf *CLIConf) {
@@ -754,12 +759,31 @@ func executeAccessRequest(cf *CLIConf) {
 	onStatus(cf)
 }
 
-func showNodes(nodes []services.Server, verbose bool) {
+func showNodes(nodes []services.Server, verbose bool, format ...string) {
+	if len(format) != 0 {
+		switch strings.ToLower(format[0]) {
+		case teleport.JSON:
+			out, err := json.MarshalIndent(nodes, "", "  ")
+			if err != nil {
+				utils.FatalError(err)
+			}
+			fmt.Println(string(out))
+			return
+		case teleport.Text:
+			// print out node host names as plain text
+			for _, n := range nodes {
+				fmt.Println(n.GetHostname())
+			}
+			return
+		}
+	}
+
+	var t asciitable.Table
 	switch verbose {
 	// In verbose mode, print everything on a single line and include the Node
 	// ID (UUID). Useful for machines that need to parse the output of "tsh ls".
 	case true:
-		t := asciitable.MakeTable([]string{"Node Name", "Node ID", "Address", "Labels"})
+		t = asciitable.MakeTable([]string{"Node Name", "Node ID", "Address", "Labels"})
 		for _, n := range nodes {
 			addr := n.GetAddr()
 			if n.GetUseTunnel() {
@@ -770,11 +794,10 @@ func showNodes(nodes []services.Server, verbose bool) {
 				n.GetHostname(), n.GetName(), addr, n.LabelsString(),
 			})
 		}
-		fmt.Println(t.AsBuffer().String())
 	// In normal mode chunk the labels and print two per line and allow multiple
 	// lines per node.
 	case false:
-		t := asciitable.MakeTable([]string{"Node Name", "Address", "Labels"})
+		t = asciitable.MakeTable([]string{"Node Name", "Address", "Labels"})
 		for _, n := range nodes {
 			labelChunks := chunkLabels(n.GetAllLabels(), 2)
 			for i, v := range labelChunks {
@@ -790,8 +813,9 @@ func showNodes(nodes []services.Server, verbose bool) {
 				t.AddRow([]string{hostname, addr, strings.Join(v, ", ")})
 			}
 		}
-		fmt.Println(t.AsBuffer().String())
 	}
+
+	fmt.Println(t.AsBuffer().String())
 }
 
 // chunkLabels breaks labels into sized chunks. Used to improve readability
