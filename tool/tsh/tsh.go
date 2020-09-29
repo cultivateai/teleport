@@ -274,7 +274,7 @@ func Run(args []string) {
 	ls.Flag("cluster", clusterHelp).Envar(clusterEnvVar).StringVar(&cf.SiteName)
 	ls.Arg("labels", "List of labels to filter node list").StringVar(&cf.UserHost)
 	ls.Flag("verbose", "One-line output, including node UUIDs").Short('v').BoolVar(&cf.Verbose)
-	ls.Flag("output", "Format output (json, text)").StringVar(&cf.OutputFormat)
+	ls.Flag("output", "Format output (json, text)").Default(teleport.Table).StringVar(&cf.OutputFormat)
 	// clusters
 	clusters := app.Command("clusters", "List available Teleport clusters")
 	clusters.Flag("quiet", "Quiet mode").Short('q').BoolVar(&cf.Quiet)
@@ -729,7 +729,15 @@ func onListNodes(cf *CLIConf) {
 		return nodes[i].GetHostname() < nodes[j].GetHostname()
 	})
 
-	showNodes(nodes, cf.Verbose, cf.OutputFormat)
+	// verbose option will only function if output format is left as default (table)
+	if cf.Verbose && cf.OutputFormat == teleport.Table {
+		cf.OutputFormat = teleport.Verbose
+	}
+
+	if err := printNodes(nodes, cf.OutputFormat); err != nil {
+		utils.FatalError(err)
+	}
+
 }
 
 func executeAccessRequest(cf *CLIConf) {
@@ -759,23 +767,36 @@ func executeAccessRequest(cf *CLIConf) {
 	onStatus(cf)
 }
 
-func showNodes(nodes []services.Server, verbose bool, format ...string) {
-	if len(format) != 0 {
-		switch strings.ToLower(format[0]) {
-		case teleport.JSON:
-			out, err := json.MarshalIndent(nodes, "", "  ")
-			if err != nil {
-				utils.FatalError(err)
-			}
-			fmt.Println(string(out))
-			return
-		case teleport.Text:
-			// print out node host names as plain text
-			for _, n := range nodes {
-				fmt.Println(n.GetHostname())
-			}
-			return
+func printNodes(nodes []services.Server, format string) error {
+	switch strings.ToLower(format) {
+	case teleport.Table:
+		printNodesAsTable(nodes, false)
+	case teleport.Verbose:
+		printNodesAsTable(nodes, true)
+	case teleport.JSON:
+		out, err := json.MarshalIndent(nodes, "", "  ")
+		if err != nil {
+			return trace.Wrap(err)
 		}
+		fmt.Println(string(out))
+	case teleport.Names:
+		for _, n := range nodes {
+			fmt.Println(n.GetHostname())
+		}
+	default:
+		return trace.Errorf("unsupported format. try 'json', 'table', or 'names'")
+	}
+
+	return nil
+}
+
+func printNodesAsTable(nodes []services.Server, verbose bool) {
+	// Reusable function to get addr or tunnel for each node
+	getAddr := func(n services.Server) string {
+		if n.GetUseTunnel() {
+			return "⟵ Tunnel"
+		}
+		return n.GetAddr()
 	}
 
 	var t asciitable.Table
@@ -785,13 +806,8 @@ func showNodes(nodes []services.Server, verbose bool, format ...string) {
 	case true:
 		t = asciitable.MakeTable([]string{"Node Name", "Node ID", "Address", "Labels"})
 		for _, n := range nodes {
-			addr := n.GetAddr()
-			if n.GetUseTunnel() {
-				addr = "⟵ Tunnel"
-			}
-
 			t.AddRow([]string{
-				n.GetHostname(), n.GetName(), addr, n.LabelsString(),
+				n.GetHostname(), n.GetName(), getAddr(n), n.LabelsString(),
 			})
 		}
 	// In normal mode chunk the labels and print two per line and allow multiple
@@ -800,18 +816,8 @@ func showNodes(nodes []services.Server, verbose bool, format ...string) {
 		t = asciitable.MakeTable([]string{"Node Name", "Address", "Labels"})
 		for _, n := range nodes {
 			labelChunks := chunkLabels(n.GetAllLabels(), 2)
-			for i, v := range labelChunks {
-				var hostname string
-				var addr string
-				if i == 0 {
-					hostname = n.GetHostname()
-					addr = n.GetAddr()
-					if n.GetUseTunnel() {
-						addr = "⟵ Tunnel"
-					}
-				}
-				t.AddRow([]string{hostname, addr, strings.Join(v, ", ")})
-			}
+			t.AddRow([]string{n.GetHostname(), getAddr(n), strings.Join(labelChunks[0], ", ")})
+			t.AddRow([]string{"", "", strings.Join(labelChunks[1], ", ")})
 		}
 	}
 
@@ -898,7 +904,7 @@ func onSSH(cf *CLIConf) {
 				}
 			}
 			fmt.Fprintf(os.Stderr, "error: ambiguous host could match multiple nodes\n\n")
-			showNodes(nodes, true)
+			printNodesAsTable(nodes, true)
 			fmt.Fprintf(os.Stderr, "Hint: try addressing the node by unique id (ex: tsh ssh user@node-id)\n")
 			fmt.Fprintf(os.Stderr, "Hint: use 'tsh ls -v' to list all nodes with their unique ids\n")
 			fmt.Fprintf(os.Stderr, "\n")
