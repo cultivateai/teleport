@@ -303,9 +303,6 @@ const (
 	// Names is for formatting node names in plain text
 	Names = "names"
 
-	// Verbose is the verbose version of Table (shows hidden fields)
-	Verbose = "verbose"
-
 	// LinuxAdminGID is the ID of the standard adm group on linux
 	LinuxAdminGID = 4
 

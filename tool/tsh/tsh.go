@@ -152,8 +152,8 @@ type CLIConf struct {
 	// Verbose is used to print extra output.
 	Verbose bool
 
-	// OutputFormat is used to change the format of output
-	OutputFormat string
+	// Format is used to change the format of output
+	Format string
 
 	// NoRemoteExec will not execute a remote command after connecting to a host,
 	// will block instead. Useful when port forwarding. Equivalent of -N for OpenSSH.
@@ -273,8 +273,8 @@ func Run(args []string) {
 	ls := app.Command("ls", "List remote SSH nodes")
 	ls.Flag("cluster", clusterHelp).Envar(clusterEnvVar).StringVar(&cf.SiteName)
 	ls.Arg("labels", "List of labels to filter node list").StringVar(&cf.UserHost)
-	ls.Flag("verbose", "One-line output, including node UUIDs").Short('v').BoolVar(&cf.Verbose)
-	ls.Flag("output", "Format output (json, text)").Default(teleport.Table).StringVar(&cf.OutputFormat)
+	ls.Flag("verbose", "One-line output (for table format), including node UUIDs").Short('v').BoolVar(&cf.Verbose)
+	ls.Flag("format", "Format output (table, json, names)").Short('f').Default(teleport.Table).StringVar(&cf.Format)
 	// clusters
 	clusters := app.Command("clusters", "List available Teleport clusters")
 	clusters.Flag("quiet", "Quiet mode").Short('q').BoolVar(&cf.Quiet)
@@ -729,12 +729,7 @@ func onListNodes(cf *CLIConf) {
 		return nodes[i].GetHostname() < nodes[j].GetHostname()
 	})
 
-	// verbose option will only function if output format is left as default (table)
-	if cf.Verbose && cf.OutputFormat == teleport.Table {
-		cf.OutputFormat = teleport.Verbose
-	}
-
-	if err := printNodes(nodes, cf.OutputFormat); err != nil {
+	if err := printNodes(nodes, cf.Format, cf.Verbose); err != nil {
 		utils.FatalError(err)
 	}
 
@@ -767,12 +762,10 @@ func executeAccessRequest(cf *CLIConf) {
 	onStatus(cf)
 }
 
-func printNodes(nodes []services.Server, format string) error {
+func printNodes(nodes []services.Server, format string, verbose bool) error {
 	switch strings.ToLower(format) {
 	case teleport.Table:
-		printNodesAsTable(nodes, false)
-	case teleport.Verbose:
-		printNodesAsTable(nodes, true)
+		printNodesAsTable(nodes, verbose)
 	case teleport.JSON:
 		out, err := json.MarshalIndent(nodes, "", "  ")
 		if err != nil {
@@ -816,8 +809,13 @@ func printNodesAsTable(nodes []services.Server, verbose bool) {
 		t = asciitable.MakeTable([]string{"Node Name", "Address", "Labels"})
 		for _, n := range nodes {
 			labelChunks := chunkLabels(n.GetAllLabels(), 2)
-			t.AddRow([]string{n.GetHostname(), getAddr(n), strings.Join(labelChunks[0], ", ")})
-			t.AddRow([]string{"", "", strings.Join(labelChunks[1], ", ")})
+			for i, v := range labelChunks {
+				if i == 0 {
+					t.AddRow([]string{n.GetHostname(), getAddr(n), strings.Join(v, ", ")})
+				} else {
+					t.AddRow([]string{"", "", strings.Join(v, ", ")})
+				}
+			}
 		}
 	}
 
