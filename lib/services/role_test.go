@@ -749,6 +749,64 @@ func (s *RoleSuite) TestCheckAccess(c *C) {
 				{server: serverC2, login: "admin", hasAccess: true},
 			},
 		},
+		{
+			name: "role matches a regexp label",
+			roles: []RoleV3{
+				RoleV3{
+					Metadata: Metadata{
+						Name:      "name1",
+						Namespace: defaults.Namespace,
+					},
+					Spec: RoleSpecV3{
+						Options: RoleOptions{
+							MaxSessionTTL: Duration(20 * time.Hour),
+						},
+						Allow: RoleConditions{
+							Logins:     []string{"admin"},
+							NodeLabels: Labels{"role": []string{`{{regexp.match("worker.*")}}`}},
+							Namespaces: []string{defaults.Namespace, namespaceC},
+						},
+					},
+				},
+			},
+			checks: []check{
+				{server: serverA, login: "root", hasAccess: false},
+				{server: serverA, login: "admin", hasAccess: false},
+				{server: serverB, login: "root", hasAccess: false},
+				{server: serverB, login: "admin", hasAccess: true},
+				{server: serverC, login: "root", hasAccess: false},
+				{server: serverC, login: "admin", hasAccess: false},
+			},
+		},
+		{
+			name: "role matches a negative regexp label",
+			roles: []RoleV3{
+				RoleV3{
+					Metadata: Metadata{
+						Name:      "name1",
+						Namespace: defaults.Namespace,
+					},
+					Spec: RoleSpecV3{
+						Options: RoleOptions{
+							MaxSessionTTL: Duration(20 * time.Hour),
+						},
+						Allow: RoleConditions{
+							Logins:     []string{"admin"},
+							NodeLabels: Labels{"role": []string{`{{regexp.not_match("db.*")}}`}},
+							Namespaces: []string{defaults.Namespace, namespaceC},
+						},
+					},
+				},
+			},
+			checks: []check{
+				{server: serverA, login: "root", hasAccess: false},
+				{server: serverA, login: "admin", hasAccess: false},
+				{server: serverB, login: "root", hasAccess: false},
+				{server: serverB, login: "admin", hasAccess: true},
+				{server: serverC, login: "root", hasAccess: false},
+				{server: serverC, login: "admin", hasAccess: false},
+			},
+		},
 	}
 	for i, tc := range testCases {
 
@@ -1527,7 +1585,7 @@ func (s *RoleSuite) TestExtractFrom(c *C) {
 	roles, traits, err = ExtractFromIdentity(&userGetter{
 		roles:  origRoles,
 		traits: origTraits,
-	}, identity)
+	}, *identity)
 	c.Assert(err, IsNil)
 	c.Assert(roles, DeepEquals, origRoles)
 	c.Assert(traits, DeepEquals, origTraits)
@@ -1547,7 +1605,7 @@ func (s *RoleSuite) TestExtractFrom(c *C) {
 	roles, traits, err = ExtractFromIdentity(&userGetter{
 		roles:  origRoles,
 		traits: origTraits,
-	}, identity)
+	}, *identity)
 	c.Assert(err, IsNil)
 	c.Assert(roles, DeepEquals, origRoles)
 	c.Assert(traits, DeepEquals, origTraits)
@@ -1586,7 +1644,7 @@ func (s *RoleSuite) TestExtractFromLegacy(c *C) {
 	roles, traits, err = ExtractFromIdentity(&userGetter{
 		roles:  origRoles,
 		traits: origTraits,
-	}, identity)
+	}, *identity)
 	c.Assert(err, IsNil)
 	c.Assert(roles, DeepEquals, origRoles)
 	c.Assert(traits, DeepEquals, origTraits)
@@ -1607,7 +1665,7 @@ func (s *RoleSuite) TestExtractFromLegacy(c *C) {
 	roles, traits, err = ExtractFromIdentity(&userGetter{
 		roles:  newRoles,
 		traits: newTraits,
-	}, identity)
+	}, *identity)
 	c.Assert(err, IsNil)
 	c.Assert(roles, DeepEquals, newRoles)
 	c.Assert(traits, DeepEquals, newTraits)

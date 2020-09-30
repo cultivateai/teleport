@@ -537,6 +537,9 @@ func applyProxyConfig(fc *FileConfig, cfg *service.Config) error {
 	if fc.Proxy.Kube.KubeconfigFile != "" {
 		cfg.Proxy.Kube.KubeconfigPath = fc.Proxy.Kube.KubeconfigFile
 	}
+	if fc.Proxy.Kube.ClusterName != "" {
+		cfg.Proxy.Kube.ClusterName = fc.Proxy.Kube.ClusterName
+	}
 	if fc.Proxy.Kube.ListenAddress != "" {
 		addr, err := utils.ParseHostPortAddr(fc.Proxy.Kube.ListenAddress, int(defaults.KubeProxyListenPort))
 		if err != nil {
@@ -901,7 +904,7 @@ func Configure(clf *CommandLineFlags, cfg *service.Config) error {
 			// If sessions are being recorded at the proxy host key checking must be
 			// enabled. This make sure the host certificate key algorithm is FIPS
 			// compliant.
-			if cfg.Auth.ClusterConfig.GetSessionRecording() == services.RecordAtProxy &&
+			if services.IsRecordAtProxy(cfg.Auth.ClusterConfig.GetSessionRecording()) &&
 				cfg.Auth.ClusterConfig.GetProxyChecksHostKeys() == services.HostKeyCheckNo {
 				return trace.BadParameter("non-FIPS compliant proxy settings: \"proxy_checks_host_keys\" must be true")
 			}
