@@ -273,8 +273,8 @@ func Run(args []string) {
 	ls := app.Command("ls", "List remote SSH nodes")
 	ls.Flag("cluster", clusterHelp).Envar(clusterEnvVar).StringVar(&cf.SiteName)
 	ls.Arg("labels", "List of labels to filter node list").StringVar(&cf.UserHost)
-	ls.Flag("verbose", "One-line output (for table format), including node UUIDs").Short('v').BoolVar(&cf.Verbose)
-	ls.Flag("format", "Format output (table, json, names)").Short('f').Default(teleport.Table).StringVar(&cf.Format)
+	ls.Flag("verbose", "One-line output (for text format), including node UUIDs").Short('v').BoolVar(&cf.Verbose)
+	ls.Flag("format", "Format output (text, json, names)").Short('f').Default(teleport.Text).StringVar(&cf.Format)
 	// clusters
 	clusters := app.Command("clusters", "List available Teleport clusters")
 	clusters.Flag("quiet", "Quiet mode").Short('q').BoolVar(&cf.Quiet)
@@ -764,8 +764,8 @@ func executeAccessRequest(cf *CLIConf) {
 
 func printNodes(nodes []services.Server, format string, verbose bool) error {
 	switch strings.ToLower(format) {
-	case teleport.Table:
-		printNodesAsTable(nodes, verbose)
+	case teleport.Text:
+		printNodesAsText(nodes, verbose)
 	case teleport.JSON:
 		out, err := json.MarshalIndent(nodes, "", "  ")
 		if err != nil {
@@ -777,13 +777,13 @@ func printNodes(nodes []services.Server, format string, verbose bool) error {
 			fmt.Println(n.GetHostname())
 		}
 	default:
-		return trace.Errorf("unsupported format. try 'json', 'table', or 'names'")
+		return trace.Errorf("unsupported format. try 'json', 'text', or 'names'")
 	}
 
 	return nil
 }
 
-func printNodesAsTable(nodes []services.Server, verbose bool) {
+func printNodesAsText(nodes []services.Server, verbose bool) {
 	// Reusable function to get addr or tunnel for each node
 	getAddr := func(n services.Server) string {
 		if n.GetUseTunnel() {
@@ -902,7 +902,7 @@ func onSSH(cf *CLIConf) {
 				}
 			}
 			fmt.Fprintf(os.Stderr, "error: ambiguous host could match multiple nodes\n\n")
-			printNodesAsTable(nodes, true)
+			printNodesAsText(nodes, true)
 			fmt.Fprintf(os.Stderr, "Hint: try addressing the node by unique id (ex: tsh ssh user@node-id)\n")
 			fmt.Fprintf(os.Stderr, "Hint: use 'tsh ls -v' to list all nodes with their unique ids\n")
 			fmt.Fprintf(os.Stderr, "\n")
